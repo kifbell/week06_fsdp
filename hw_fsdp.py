@@ -341,13 +341,13 @@ class FSDPModule:
 
     def _backward_prefetch(self) -> None:
         # Explicitly prefetch the next module during backward
-        if not self._post_forward_indices:
-            return
-        curr_idx = self._post_forward_indices[-1]
-        if curr_idx > 0:
-            next_module = self.comm_ctx.post_forward_order[curr_idx - 1]
-            self._prefetch_unshard(next_module)
-
+        # if not self._post_forward_indices:
+        #     return
+        # curr_idx = self._post_forward_indices[-1]
+        # if curr_idx > 0:
+        #     next_module = self.comm_ctx.post_forward_order[curr_idx - 1]
+        #     self._prefetch_unshard(next_module)
+        pass
     @staticmethod
     def _prefetch_unshard(target_fsdp_module: "FSDPModule") -> None:
         with record_function(
@@ -427,7 +427,7 @@ def pre_backward(module: FSDPModule, grad: torch.Tensor):
         module._training_state = TrainingState.PRE_BACKWARD
         module.unshard()  # no-op if prefetched
         module.wait_for_unshard()
-        module._backward_prefetch()
+        # module._backward_prefetch()
     return grad
 
 
