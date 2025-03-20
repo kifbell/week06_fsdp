@@ -296,6 +296,10 @@ class FSDPModule:
                     local_tensor,
                     group=fsdp_param.mesh.get_all_groups()[0]
                 )
+            
+            # Record event to wait for all-gather to complete
+            self._all_gather_event = torch.cuda.Event()
+            self._all_gather_event.record()
 
     def wait_for_unshard(self):
         # Wait for all-gather to complete
