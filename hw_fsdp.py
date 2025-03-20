@@ -294,7 +294,7 @@ class FSDPModule:
                 dist.all_gather_into_tensor(
                     unsharded_tensor,
                     local_tensor,
-                    group=fsdp_param.mesh.get_dim_groups()[0]
+                    group=fsdp_param.mesh.get_all_groups()[0]
                 )
 
     def wait_for_unshard(self):
@@ -440,7 +440,7 @@ def post_backward(module: FSDPModule):
                 dist.reduce_scatter_tensor(
                     fsdp_param.sharded_param.grad,
                     fsdp_param._unsharded_param.grad,
-                    group=fsdp_param.mesh.get_dim_groups()[0]
+                    group=fsdp_param.mesh.get_all_groups()[0]
                 )
                 
                 # Free unsharded grads
