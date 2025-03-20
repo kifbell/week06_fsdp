@@ -229,14 +229,15 @@ def train(
 
     logger.info(f"Building {model_name} {flavor} with {model_config}")
     memory_profiler = MemoryProfiler(
-        profile_freq - 2,
-        profile_freq,
+        0,
+        1,
         snapshot_dir=os.path.join(dump_folder, save_memory_snapshot_folder),
-        dir_name="model_init",
+        dir_name="init_phase",
     )
     memory_profiler.step()
     with torch.device("cpu"):
         model = model_cls.from_model_args(model_config)
+    memory_profiler.step()
 
     # log model size
     model_param_count = utils.get_num_params(model)
@@ -280,6 +281,12 @@ def train(
     )
     model.train()
 
+    memory_profiler = MemoryProfiler(
+        0,
+        1,
+        snapshot_dir=os.path.join(dump_folder, save_memory_snapshot_folder),
+        dir_name="post_fsdp",
+    )
     memory_profiler.step()
 
     device_mem_stats = device_memory_monitor.get_peak_stats()
@@ -344,9 +351,12 @@ def train(
         while step < training_steps:
             memory_profiler = MemoryProfiler(
                 step,
-                profile_freq,
+                1,
                 snapshot_dir=os.path.join(dump_folder, save_memory_snapshot_folder),
+                dir_name=f"training_step_{step}",
             )
+            
+            memory_profiler.step()
 
             step += 1
             gc_handler.run(step)
