@@ -66,6 +66,10 @@ class FSDPParam:
         self.device = device
         self._init_sharded_param(param)
         self._init_dtype_attrs(mp_policy)
+        
+        # Ensure gradient storage is properly allocated
+        if param.requires_grad:
+            self.sharded_param.requires_grad_(True)
 
     @torch.no_grad()
     def _init_sharded_param(self, param: nn.Parameter):
@@ -93,11 +97,15 @@ class FSDPParam:
         shard_indices[shard_dim] = slice(start_idx, end_idx)
         local_shard = param[shard_indices].clone()
         
-        # Create DTensor
+        # Create DTensor with proper storage allocation
         self.sharded_param = nn.Parameter(
             DTensor.from_local(local_shard, self.mesh, [self.fsdp_placement], run_check=False),
             requires_grad=param.requires_grad
         )
+
+        # Ensure storage is allocated for gradients if needed
+        if param.requires_grad:
+            self.sharded_param.grad = torch.zeros_like(self.sharded_param.data)
 
         self._setattr_on_module(self.sharded_param)
         self.sharded_state = ShardedState.SHARDED
@@ -157,7 +165,10 @@ class FSDPParam:
 
 
 def alloc_storage(tensor: torch.Tensor) -> None:
-    size = tensor.numel() * tensor.itemsize
+    """Ensure tensor storage is properly allocated"""
+    if tensor is None:
+        return
+    size = tensor.numel() * tensor.element_size()
     if (storage := tensor.untyped_storage()).size() != size:
         storage.resize_(size)
 
@@ -436,6 +447,10 @@ def post_backward(module: FSDPModule):
         # Reduce-scatter unsharded grads into sharded grads
         for fsdp_param in module.fsdp_params:
             if fsdp_param._unsharded_param.grad is not None:
+                # Ensure sharded grad storage exists
+                if fsdp_param.sharded_param.grad is None:
+                    fsdp_param.sharded_param.grad = torch.zeros_like(fsdp_param.sharded_param.data)
+                
                 # Reduce-scatter the gradient
                 dist.reduce_scatter_tensor(
                     fsdp_param.sharded_param.grad,
