@@ -278,25 +278,23 @@ class FSDPModule:
         if self.is_unsharded:
             return  # no-op
         with record_function(self.with_fqn("FSDP::all_gather")):
-            # Allocate unsharded param data
             for fsdp_param in self.fsdp_params:
                 alloc_storage(fsdp_param.unsharded_param)
                 
+                
+            # All-gather sharded params into unsharded params
+            
             # All-gather sharded params into unsharded params
             for fsdp_param in self.fsdp_params:
-                sharded_tensor = fsdp_param.sharded_param
-                unsharded_tensor = fsdp_param.unsharded_param
-                
-                # Get local tensor from DTensor
-                local_tensor = sharded_tensor.to_local()
-                
-                # All-gather
                 dist.all_gather_into_tensor(
-                    unsharded_tensor,
-                    local_tensor,
+                    fsdp_param.unsharded_param.data,
+                    fsdp_param.sharded_param.data._local_tensor,
                     group=fsdp_param.mesh.get_all_groups()[0]
                 )
             
+            
+            # Record event to wait for all-gather to complete
+
             # Record event to wait for all-gather to complete
             self._all_gather_event = torch.cuda.Event()
             self._all_gather_event.record()
@@ -442,13 +440,14 @@ def post_backward(module: FSDPModule):
             if fsdp_param._unsharded_param.grad is not None:
                 # Reduce-scatter the gradient
                 dist.reduce_scatter_tensor(
-                    fsdp_param.sharded_param.grad,
                     fsdp_param._unsharded_param.grad,
+                    fsdp_param.sharded_param.grad._local_tensor,
                     group=fsdp_param.mesh.get_all_groups()[0]
                 )
                 
                 # Free unsharded grads
                 free_storage(fsdp_param._unsharded_param.grad)
+                del fsdp_param._unsharded_param.grad
                 fsdp_param._unsharded_param.grad = None
 
 
